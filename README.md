@@ -3,7 +3,7 @@
 ## Austin Schwinn
 
 ### March 9, 2017
-Analysis of CO2 as the primary driver of climate change
+Analysis of fCO2 as the primary driver of climate change
 
 #### REFERENCES
 
