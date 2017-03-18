@@ -1,10 +1,10 @@
-# CO2_Climate_Analysis
+# Data Mining Final Projects
 
 ## Austin Schwinn
 
-### March 9, 2017
+### March 24, 2017
 
-Analysis of CO2 as the primary driver of climate change
+Applying the data mining process to climate data to highlight CO2 as the primary driver of climate change.
 
 #### REFERENCES
 
