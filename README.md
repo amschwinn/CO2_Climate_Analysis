@@ -1,13 +1,10 @@
-# Data Science vs Fake News 
-
-## It's Getting Hot In Here
-### The Burning Effect of Fake News on Climate Change 
+# CO2_Climate_Analysis
 
 ## Austin Schwinn
 
-### March 10, 2017
+### March 9, 2017
 
-My submission to the data science competition "Data Science vs Fake News" put on by KDNuggets.com, Data4Democracy, and Data.World. The goal of my submission is to highlight CO2 as the primary driver of climate change and why. This is in response to Scott Pruitt, EPA Administrator, claiming that CO2 is not a primary cause.
+Analysis of CO2 as the primary driver of climate change
 
 #### REFERENCES
 
