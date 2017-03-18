@@ -113,6 +113,7 @@ colnames(rad_force_m) <- c("year","Gas","value")
 #Data Modeling
 
 #Function to combine two plots into a single two y-axis plot
+#*R1*) This function is based on rpubs tutorial by Kohske
 two_plots <- function(p1,p2) {
   win.graph(800,600,10)
   #Plot dual axis gplot2
@@ -308,3 +309,12 @@ t5 <- textGrob("SOURCE: NOAA Annual Greenhouse Gas Index")
 
 win.graph(800,600,10)
 grid.arrange(plot3,t5,ncol=1,heights=c(20,1))
+
+################################################################
+#### REFERENCES
+
+#R1
+#Dual axis in ggplot2
+#By Kohske
+#http://rpubs.com/kohske/dual_axis_in_ggplot2
+
