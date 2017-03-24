@@ -15,6 +15,7 @@
 #install.packages('gridExtra')
 #install.packages('plyr')
 #install.packages("RColorBrewer")
+
 library(rstudioapi)
 library(ggplot2)
 library(dplyr)
@@ -25,6 +26,8 @@ library(scales)
 library(gridExtra)
 library(plyr)
 library(RColorBrewer)
+
+set.seed(61391)
 
 #Set working directory
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
@@ -97,10 +100,30 @@ hist_50_co2      <- hist_co2[hist_co2$year>=1750,c(1,ncol(hist_co2))]
 hist_50_methane  <- hist_methane[hist_methane$year>=1750,c(1,ncol(hist_methane))]
 hist_50_n2o      <- hist_n2o[hist_n2o$year>=1750,c(1,ncol(hist_n2o))]
 
-#Global Temp Yearly Averages
+#Global Temp Yearly Averages vs gases
 global_temp$year  <- format(as.Date(global_temp$dt, format="%Y-%m-%d"),"%Y")
 global_avg        <- ddply(subset(global_temp,is.na(LandAndOceanAverageTemperature)==FALSE), .(year), summarize,  temp=mean(LandAndOceanAverageTemperature))
 global_co2        <- subset(hist_50_co2, hist_50_co2$year >= min(global_avg$year))
+global_n2o        <- subset(hist_50_n2o, hist_50_n2o$year >= min(global_avg$year))
+global_methane    <- subset(hist_50_methane, hist_50_methane$year >= min(global_avg$year))
+
+#change column names
+colnames(global_co2)      <- c("year","co2")
+colnames(global_n2o)      <- c("year","n2o")
+colnames(global_methane)  <- c("year","methane")
+
+#Combine temps and co2
+temp_co2 <- merge(x = global_avg, y = global_co2, by = "year")
+
+#break into test and train data
+training_rows   <- sample(seq_len(nrow(temp_co2)), size = nrow(temp_co2)*.66)
+temp_co2_train  <- temp_co2[training_rows, ]
+temp_co2_test   <- temp_co2[-training_rows, ]
+
+#combine all
+temp_all <- merge(x = global_avg, y = global_co2, by = "year")
+temp_all <- merge(x = temp_all, y = global_n2o, by = "year")
+temp_all <- merge(x = temp_all, y = global_methane, by = "year")
 
 #Clean radical forcing
 rad_force               <- rad_force[-c(38,39),]
@@ -260,6 +283,19 @@ lay <- rbind(c(1,1),
 win.graph(800,600,10)
 grid.arrange(t1,g1,g2,g4,layout_matrix = lay, widths=c(2,1), heights=c(1,9,1))
 
+
+#Plot climate forcing
+plot3 <- ggplot()+
+  geom_area(data=rad_force_m,aes(x=as.numeric(as.character(year)),y=value, fill=Gas))+
+  scale_fill_brewer(palette="GnBu",direction = -1)+
+  labs(x="Year", y="Radiative Forcing (W m^2)",title="Greenhouse Gas Radiative Forcing", subtitle="1979 - 2015")+
+  scale_y_continuous(limits=c(0,3),breaks=seq(0,3,.25))+
+  scale_x_continuous(limits=c(1979,2015),breaks=seq(1980,2015,5))
+t5 <- textGrob("SOURCE: NOAA Annual Greenhouse Gas Index")
+
+win.graph(800,600,10)
+grid.arrange(plot3,t5,ncol=1,heights=c(20,1))
+
 #Global temp with CO2 overlay plot
 #Global temp subplot
 plot1 <- ggplot()+
@@ -298,17 +334,104 @@ g6 <- grid.arrange(b1, g5,p3,ncol=3,widths=c(1,2,1))
 win.graph(800,600,10)
 grid.arrange(g1,g6,ncol=1,heights=c(12,1))
 
-#Plot climate forcing
-plot3 <- ggplot()+
-  geom_area(data=rad_force_m,aes(x=as.numeric(as.character(year)),y=value, fill=Gas))+
-  scale_fill_brewer(palette="GnBu",direction = -1)+
-  labs(x="Year", y="Radiative Forcing (W m^2)",title="Greenhouse Gas Radiative Forcing", subtitle="1979 - 2015")+
-  scale_y_continuous(limits=c(0,3),breaks=seq(0,3,.25))+
-  scale_x_continuous(limits=c(1979,2015),breaks=seq(1980,2015,5))
-t5 <- textGrob("SOURCE: NOAA Annual Greenhouse Gas Index")
+#Now I want to make predictions based on the current trends
+#I am am going to make the amount of CO2 variable and have
+#a user adjust the % of co2 compared to prediction through
+#a shiny app with a reactive chart
 
-win.graph(800,600,10)
-grid.arrange(plot3,t5,ncol=1,heights=c(20,1))
+#Which gas has the highest correlation wiith temp
+pairs(temp_all[2:ncol(temp_all)])
+#It looks like co_2 and n2o both have strong correlation 
+#But we have twice as many years in common with just co2 and temp
+#than we do if n2o is involved, so we will just use co2
+
+#Look at the correlation between co2 and temperature
+cor(temp_co2[2:3])
+#We have .93 correlation between co2 and temperature so this is a strong feauture to predict on
+
+#Linear regression to predict temp based on co2 levels
+temp_co2_reg <- lm(data=temp_co2, temp~co2)
+plot(temp_co2_reg)
+
+#Time series linear regression to get trend for co2 based on time.
+#We adapt for the exponential growth
+co2_year_reg <- lm(data=temp_co2_train, co2~as.numeric(year)+ I(as.numeric(year)^2)+ I(as.numeric(year)^3)+ I(as.numeric(year)^4))
+
+temp_co2$output <- predict(co2_year_reg,newdata=temp_co2)
+
+#Take a look at the fit of your line
+ggplot()+
+  geom_point(data=temp_co2_train, aes(x=as.numeric(year), y=co2),color="green")+
+  geom_point(data=temp_co2_test, aes(x=as.numeric(year), y=co2),color='blue')+
+  geom_line(data=temp_co2, aes(x=as.numeric(year), y=output))
+#It looks well fit on both training and test data.
+
+#If the user changes the % of CO2 gain every year
+#Reduce CO2 rate by a the defined percentage before we run it into predict our temperature
+change <- 75
+
+#Build dataframe for our prediction output
+prediction      <- data.frame(cbind(year=c(1950:2050)))
+prediction$co2  <- predict(co2_year_reg, newdata=prediction)
+#update with user changed co2
+prediction2 <- prediction
+i=2016
+while(i<max(prediction2$year)+1){
+  rate_change <- (prediction2[prediction$year==i,"co2"]-prediction2[prediction$year==i-1,"co2"])/prediction2[prediction$year==i-1,"co2"]
+  prediction2[prediction$year==i,"co2"] <- prediction2[prediction$year==i-1,"co2"]*(1+rate_change*(1-change/100))
+  i <- i+1
+}
+
+#now predict with new co2
+prediction$temp  <- predict(temp_co2_reg, newdata=prediction)
+prediction2$temp <- predict(temp_co2_reg, newdata=prediction2)
+
+#Only keep years that are predictrions
+prediction <- rbind(temp_co2[as.numeric(temp_co2$year)>=1950 & as.numeric(temp_co2$year)<=2015,1:3],cbind(prediction[as.numeric(prediction$year)>2015,c(1,3,2)]))
+prediction2 <- rbind(temp_co2[as.numeric(temp_co2$year)>=1950 & as.numeric(temp_co2$year)<=2015,1:3],cbind(prediction2[as.numeric(prediction2$year)>2015,c(1,3,2)]))
+
+
+#Global temp subplot
+plot1 <- ggplot()+
+  geom_ribbon(data=prediction, aes(x=as.numeric(year), y=temp, ymin=14.5, ymax=temp), fill="orangered1", color="orangered1")+
+  #scale_x_continuous(name="Year", limits=c(1850,2015),breaks=seq(1850,2015,15))+
+  geom_line(data=prediction, aes(x=as.numeric(year), y=temp), color="orangered2",lwd=1)+
+  geom_ribbon(data=prediction2, aes(x=as.numeric(year), y=temp, ymin=14.5, ymax=temp), fill="orangered3", color="orangered3")+
+  #scale_x_continuous(name="Year", limits=c(1850,2015),breaks=seq(1850,2015,15))+
+  geom_line(data=prediction2, aes(x=as.numeric(year), y=temp), color="orangered4",lwd=1)+
+  labs(title="Average Global Temperature vs CO2 Concentration", subtitle="1950 - 2050",y="")
+#CO2 concentrations subplot
+plot2 <- ggplot()+
+  geom_line(data=prediction, aes(x=as.numeric(year), y=co2),lwd=1, color="steelblue1")+
+  geom_line(data=prediction2, aes(x=as.numeric(year), y=co2),lwd=1, color="steelblue4")
+#scale_y_continuous(name="Average Temperature", limits=c(250,400),breaks=seq(250,400,50))
+
+#combine temp and co2 subplots
+two_plots(p1=plot1,p2=plot2)
+
+#Add some labels
+t6 <- textGrob("Average Global Temperature (Celcius)",gp=gpar(col="orangered4"),rot=90)
+t7 <- textGrob("CO2 Concentration (PPM)",gp=gpar(col="steelblue4"),rot=270)
+g1 <- arrangeGrob(t6,g,t7, ncol=3 ,widths=c(1,15,1))
+
+
+#Add legend
+p3 <- ggplot(data=p1,aes(x=x,y=y,xmax=2,ymax=1,xmin=0,ymin=.25))+
+  geom_point(aes(x=.75,y=1),size=4,color="orangered3",shape=15,ylab="Temp") +
+  geom_point(aes(x=1.25,y=1),size=4,color="steelblue4",shape=15,ylab="CO2") + 
+  annotate("text",x=.75,.5,label="AVG Temp",size=3,color="orangered3")+
+  annotate("text",x=1.25,.5,label="CO2",size=3,color="steelblue3")+
+  theme(axis.text.x = element_blank(),axis.text.y = element_blank(),
+        axis.ticks = element_blank(),axis.title.x=element_blank(),axis.title.y=element_blank(),
+        panel.background = element_blank())
+t8 <- textGrob("SOURCE: Berkeley Earth Dataset Provided by Data.World")
+g5 <- grid.arrange(b1,t8, ncol=1)
+g6 <- grid.arrange(b1, g5,p3,ncol=3,widths=c(1,2,1))
+
+#output
+grid.arrange(g1,g6,ncol=1,heights=c(12,1))
+
+
 
 ################################################################
 #### REFERENCES
